@@ -465,7 +465,4 @@ async def dice(interaction: nextcord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 
-
-
-
 bot.run(DISCORD_TOKEN)
