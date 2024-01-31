@@ -114,6 +114,23 @@ class SlotMachineView(nextcord.ui.View):
 
 
 
+@bot.event
+async def on_message(message):
+    if message.author.bot:
+        return
+    
+    cuvinte_interzise = incarca_cuvinte_interzise()
+    if any(cuvant.lower() in message.content.lower() for cuvant in cuvinte_interzise):
+        try:
+            await message.delete()
+            await message.channel.send(f"{message.author.mention}, mesajul tău conținea cuvinte interzise și a fost șters.")
+            # Trimiterea logului pe canalul dedicat
+            await trimite_log(bot, f"Mesaj șters de la {message.author} în {message.channel}: conținea cuvinte interzise.")
+        except nextcord.Forbidden:
+            print("Nu am permisiuni pentru a șterge mesaje în acest canal.")
+            await trimite_log(bot, "Nu am permisiuni pentru a șterge mesaje.")
+
+
 
 
 
