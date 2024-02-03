@@ -1,33 +1,28 @@
-import nextcord
-
-import random
+# Importuri standard Python
 import os
-import requests
 import json
-import datetime
+import random
+import asyncio
+from io import BytesIO
+from datetime import datetime, timedelta
 from collections import Counter
-from datetime import datetime, timedelta
 
-
-
-
-
+# Importuri de terțe părți
+import nextcord
+import qrcode
+import requests
 from dotenv import load_dotenv
-from nextcord.ext import commands
-from nextcord.ui import View
-from datetime import datetime, timedelta
-
-from nextcord.ui import View, Button
-from datetime import datetime
 from pytz import timezone
+from datetime import datetime
 
 
+# Importuri Nextcord
+from nextcord.ext import commands
+from nextcord.ui import Button, View, Select
+
+# Importuri locale (module specifice proiectului tău)
 from skins import skinuri_samp
 from masini import masini_samp
-
-
-
-
 
 
 
@@ -43,74 +38,60 @@ intents.members = True
 intents.guilds = True
 bot = commands.Bot(command_prefix="g.", intents=intents)
 
-#ticket button
-class TicketView(nextcord.ui.View):
-    def __init__(self, channel: nextcord.TextChannel):
-        super().__init__()
-        self.channel = channel
-
-    @nextcord.ui.button(label="Închide Ticketul🔴", style=nextcord.ButtonStyle.red)
-    async def close_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        # Verifică dacă persoana care apasă butonul este un administrator
-        if interaction.user.guild_permissions.administrator:
-            await self.channel.delete(reason="Ticket închis")
-        else:
-            await interaction.response.send_message("Doar un administrator poate închide acest ticket.", ephemeral=True)
-
-class TicketCategoryView(nextcord.ui.View):
-    def __init__(self, member: nextcord.Member, guild: nextcord.Guild):
-        super().__init__()
-        self.member = member
-        self.guild = guild
-
-    @nextcord.ui.select(placeholder="Alege categoria ticketului...", min_values=1, max_values=1,
-                        options=[
-                            nextcord.SelectOption(label="Suport Tehnic", description="Asistență tehnică", emoji="🔧"),
-                            nextcord.SelectOption(label="Raportare Bug", description="Raportare de bug-uri", emoji="🐛"),
-                            nextcord.SelectOption(label="General", description="Întrebări generale", emoji="❓")
-                        ])
-    async def select_callback(self, select: Select, interaction: nextcord.Interaction):
-        category = select.values[0]
-        await self.create_ticket(interaction, category)
-
-    async def create_ticket(self, interaction: nextcord.Interaction, category: str):
-        # Crează un nou canal pentru ticket
-        overwrites = {
-            self.guild.default_role: nextcord.PermissionOverwrite(read_messages=False),
-            self.member: nextcord.PermissionOverwrite(read_messages=True),
-            self.guild.me: nextcord.PermissionOverwrite(read_messages=True)
-        }
-        
-        ticket_channel = await self.guild.create_text_channel(f"ticket-{category.lower()}-{self.member.name}", overwrites=overwrites)
-
-        # Adaugă butonul de închidere la canalul de ticket
-        view = TicketView(channel=ticket_channel)
-        await ticket_channel.send(f"{self.member.mention} Bine ai venit în ticketul tău pentru categoria '{category}'!", view=view)
-        await interaction.response.send_message(f"Ticketul tău a fost creat: {ticket_channel.mention}", ephemeral=True)
 
 
 
-#slost
-class SlotMachineView(nextcord.ui.View):
-    def __init__(self):
-        super().__init__()
-        self.emojis = ["🍒", "🍋", "🔔", "💎", "🍉"]
 
-    @nextcord.ui.button(label="Spin", style=nextcord.ButtonStyle.green)
-    async def spin_button(self, button: nextcord.ui.Button, interaction: nextcord.Interaction):
-        # Alege trei seturi de emoji aleatorii pentru rândurile sloturilor
-        rows = [random.choices(self.emojis, k=3) for _ in range(3)]
-        rows_str = [' | '.join(row) for row in rows]
-        slot_display = "\n".join(rows_str)
 
-        # Verifică dacă linia din mijloc este câștigătoare
-        result = "WIN 🎉" if rows[1][0] == rows[1][1] == rows[1][2] else "LOST 😢"
 
-        # Formează mesajul final
-        result_display = f"**🎰 SLOTS 🎰**\n```\n{slot_display}\n```\n**{result}**"
 
-        # Trimite rezultatul și reafișează butonul de Spin
-        await interaction.response.edit_message(content=result_display, view=self)
+
+
+
+
+#cuvinte interzise
+import json
+
+def incarca_cuvinte_interzise():
+    try:
+        with open('cuvinte_interzise.json', 'r') as f:
+            data = json.load(f)
+            return data["cuvinte"]
+    except FileNotFoundError:
+        return []
+
+def salveaza_cuvinte_interzise(cuvinte):
+    with open('cuvinte_interzise.json', 'w') as f:
+        json.dump({"cuvinte": cuvinte}, f, indent=4)
+
+
+async def trimite_log(bot, titlu, descriere, canal_id, url_avatar=None, culoare=0x3498db):
+    canal_loguri = bot.get_channel(canal_id)
+    if canal_loguri:
+        embed = nextcord.Embed(title=titlu, description=descriere, color=culoare)
+        if url_avatar:  # Dacă este furnizat un URL pentru avatar, setează-l ca thumbnail
+            embed.set_thumbnail(url=url_avatar)
+        embed.set_footer(text="Log Bot")
+        embed.timestamp = nextcord.utils.utcnow()
+        await canal_loguri.send(embed=embed)
+    else:
+        print("Canalul de loguri nu a fost găsit.")
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
@@ -122,20 +103,73 @@ async def on_message(message):
     cuvinte_interzise = incarca_cuvinte_interzise()
     if any(cuvant.lower() in message.content.lower() for cuvant in cuvinte_interzise):
         try:
+            mesaj_original = message.content  # Salvăm conținutul mesajului înainte de a-l șterge
             await message.delete()
             await message.channel.send(f"{message.author.mention}, mesajul tău conținea cuvinte interzise și a fost șters.")
-            # Trimiterea logului pe canalul dedicat
-            await trimite_log(bot, f"Mesaj șters de la {message.author} în {message.channel}: conținea cuvinte interzise.")
+
+            # Trimiterea logului pe canalul dedicat cu embed
+            id_canal_loguri = 1202277836140838912 # Înlocuiește cu ID-ul real al canalului de loguri
+            titlu_log = "Mesaj Șters pentru Cuvinte Interzise"
+            descriere_log = f"Mesaj de la {message.author.mention} șters în {message.channel.mention}\nConținut: {mesaj_original}"
+            await trimite_log(bot, titlu_log, descriere_log, id_canal_loguri, culoare=0xff0000)  # Culoare roșie pentru avertizare
         except nextcord.Forbidden:
             print("Nu am permisiuni pentru a șterge mesaje în acest canal.")
-            await trimite_log(bot, "Nu am permisiuni pentru a șterge mesaje.")
+            # Trimitere log pentru eroare de permisiuni
+            await trimite_log(bot, "Eroare de Permisiuni", "Nu am permisiuni pentru a șterge mesaje.", id_canal_loguri)
+
+id_canal_loguri = 1202277836140838912 # Înlocuiește acest număr cu ID-ul real al canalului de loguri
 
 
+@bot.slash_command(name="giverole", description="Oferă un rol unui membru")
+@commands.has_permissions(manage_roles=True)
+async def giverole(interaction: nextcord.Interaction, member: nextcord.Member, role: nextcord.Role):
+    try:
+        await member.add_roles(role)
+        # Crează și trimite un embed de succes
+        embed_succes = nextcord.Embed(
+            title="Rol Adăugat cu Succes",
+            description=f"Rolul **{role.name}** a fost adăugat membrului **{member.display_name}**.",
+            color=0x00ff00
+        )
+        await interaction.response.send_message(embed=embed_succes)
 
+        # Trimite logul către canalul de loguri
+        descriere_log = f"Rolul **{role.name}** a fost adăugat membrului **{member.mention}** de către **{interaction.user.mention}**."
+        await trimite_log(bot, "Rol Adăugat", descriere_log, id_canal_loguri)
+    except Exception as e:
+        # Crează și trimite un embed de eroare
+        embed_eroare = nextcord.Embed(
+            title="Eroare la Adăugarea Rolului",
+            description=f"A apărut o eroare: {e}",
+            color=0xff0000
+        )
+        await interaction.response.send_message(embed=embed_eroare)
 
+        # Trimite logul de eroare către canalul de loguri
+        descriere_log_eroare = f"Eroare la adăugarea rolului **{role.name}** membrului **{member.mention}** de către **{interaction.user.mention}**: {e}"
+        await trimite_log(bot, "Eroare Rol Adăugat", descriere_log_eroare, id_canal_loguri)
+#logs event
+@bot.event
+async def on_user_update(before, after):
+    if before.avatar != after.avatar:
+        descriere_log = f"{after.mention} și-a schimbat avatarul."
+        url_avatar = str(after.avatar.url) if after.avatar else "URL implicit pentru avatarul lipsă"
+        await trimite_log(bot, "Schimbare Avatar", descriere_log, id_canal_loguri, url_avatar=url_avatar)
 
+@bot.event
+async def on_message_delete(message):
+    if not message.author.bot:  # Ignoră mesajele șterse de bot
+        descriere_log = f"Mesaj șters în {message.channel.mention} de către {message.author.mention}: {message.content}"
+        url_avatar = str(message.author.avatar.url) if message.author.avatar else "URL implicit pentru avatarul lipsă"
+        await trimite_log(bot, "Mesaj Șters", descriere_log, id_canal_loguri, url_avatar=url_avatar)
 
-
+@bot.event
+async def on_message_edit(before, after):
+    if not after.author.bot:  # Ignoră mesajele editate de bot
+        if before.content != after.content:  # Verifică dacă conținutul mesajului s-a schimbat
+            descriere_log = f"Mesaj editat în {after.channel.mention} de către {after.author.mention}\nÎnainte: {before.content}\nDupă: {after.content}"
+            url_avatar = str(after.author.avatar.url) if after.author.avatar else "URL implicit pentru avatarul lipsă"
+            await trimite_log(bot, "Mesaj Editat", descriere_log, id_canal_loguri, url_avatar)
 
 
 
@@ -192,39 +226,7 @@ async def online_members(ctx):
 
 
 
-#comanda e ajutor
 
-@bot.slash_command(name='help', description='Afișează comenzi disponibile')
-async def help_command(ctx):
-    help_embed = nextcord.Embed(title="🔷Commands Panel🔷", color=0x3498db)
-    help_embed.add_field(name="🔸g.statusserver", value="Afișează statusul serverului Discord.")
-    help_embed.add_field(name="🔸g.clear [numar_mesaje]", value="Șterge un număr specific de mesaje în canalul curent.")
-    help_embed.add_field(name="🔸g.post [text/link]", value="Folosește !post pentru a face o postare pe canalul curent.")
-    help_embed.add_field(name="🔸g.ban", value="Este folosită pentru a interzice un membru pe serverul Discord.")
-    help_embed.add_field(name="🔸g.skin", value="Este folosită pentru a căuta un skin pentru SA-MP.")
-    help_embed.add_field(name="🔸g.timeout", value="Este folosita de catre staff pentru a pune un membru pe pauza.")
-    help_embed.add_field(name="🔸g.membru [membru]", value="Afișează informații despre un utilizator.")
-    help_embed.add_field(name="🔸g.avatar [membru]", value="arata avatarul membrului .")
-    help_embed.add_field(name="🔸g.lock [channel]", value="blocheaza accesul la canale (stffcommand).")
-    help_embed.add_field(name="🔸g.unlock[channel]", value="deblocheaza accesul la canale (stffcommand).")
-
-    help_embed.set_footer(text="Folosește g.ajutor [comandă] pentru detalii suplimentare.")
-
-    bot_id = bot.user.id
-    permissions = nextcord.Permissions.all()
-    invite_link = nextcord.utils.oauth_url(bot_id, permissions=permissions)
-
-    button = Button(label="📨Invită botul", url=invite_link)
-    view = View()
-    view.add_item(button)
-
-    await ctx.send(embed=help_embed, view=view)
-
-    async def on_button_click(interaction):
-        if interaction.component.label == "📨Invită botul":
-            await interaction.followup.send("Link de invitație: " + invite_link)
-
-    bot.add_listener(on_button_click, 'on_button_click')
 
 #comanda de post
 
@@ -289,35 +291,7 @@ async def unban_error(ctx, error):
 
 #commanda de cautat skinuri
 
-@bot.slash_command(name='skin', description='Caută informații despre un skin.')
-async def cauta_skin(ctx, nume_cautat: str):
-    try:
-        nume_cautat = int(nume_cautat)
-        if nume_cautat in skinuri_samp:
-            skin = skinuri_samp[nume_cautat]
-            await afiseaza_informatii_skin(ctx, nume_cautat, skin)
-        else:
-            await cauta_dupa_nume(ctx, nume_cautat)
-    except ValueError:
-        await cauta_dupa_nume(ctx, nume_cautat)
 
-async def cauta_dupa_nume(ctx, nume_cautat):
-    skin_gasit = None
-    for id_skin, skin in skinuri_samp.items():
-        if nume_cautat.lower() in skin["nume_skin"].lower():
-            skin_gasit = skin
-            await afiseaza_informatii_skin(ctx, id_skin, skin_gasit)
-    if skin_gasit is None:
-        await ctx.send(f'Skinul cu numele "{nume_cautat}" nu a fost găsit.')
-
-async def afiseaza_informatii_skin(ctx, id_skin, skin):
-    embed = nextcord.Embed(title=f'Informații despre skin (ID {id_skin})', color=0x3498db)
-    embed.add_field(name="Nume Skin", value=skin["nume_skin"])
-    embed.add_field(name="Tip Skin", value=skin["tip_skin"])
-    embed.add_field(name="Gen", value=skin["gen"])
-    embed.add_field(name="Nume Model", value=skin["model_name"])
-    embed.set_image(url=skin["preview"])
-    await ctx.send(embed=embed)
 
 #comanda pentru masini
     
@@ -383,14 +357,7 @@ async def unlock_channel(ctx, channel: nextcord.TextChannel = None):
     await ctx.send(f"Canalul {channel.mention} a fost deblocat.")
       
 
-@bot.slash_command(name="giverole", description="Oferă un rol unui membru")
-@commands.has_permissions(manage_channels=True)
-async def giverole(ctx, member: nextcord.Member, role: nextcord.Role):
-    try:
-        await member.add_roles(role)
-        await ctx.send(f"Rolul {role.name} a fost adăugat cu succes membrului {member.display_name}.")
-    except Exception as e:
-        await ctx.send(f"A apărut o eroare: {e}")
+
 
 
 @bot.slash_command(name="calc", description="calculeaza diferite calcule")
@@ -401,42 +368,8 @@ async def calculate(ctx, *, expression: str):
     except Exception as e:
         await ctx.send(f"A apărut o eroare în timpul calculului: {e}")
 
-@bot.slash_command(name="serverinfo", description="Arata date despre server")
-async def serverinfo(ctx):
-    guild = ctx.guild
-    if not guild:
-        # Comanda a fost folosită în afara unui server
-        await ctx.send("Această comandă trebuie utilizată într-un server.")
-        return
 
-    # Creează un embed cu informațiile despre server
-    embed = nextcord.Embed(title=f"Informații despre {guild.name}", color=0x00ff00)
-    embed.add_field(name="Proprietar", value=str(guild.owner), inline=True)
-    embed.add_field(name="Creat pe", value=guild.created_at.strftime("%d/%m/%Y, %H:%M:%S"), inline=True)
-    embed.add_field(name="Membri", value=str(guild.member_count), inline=True)
-    embed.add_field(name="Canale de voce", value=str(len(guild.voice_channels)), inline=True)
-    embed.add_field(name="Canale text", value=str(len(guild.text_channels)), inline=True)
-    embed.add_field(name="Nivel de securitate", value=str(guild.verification_level), inline=True)
-    embed.set_thumbnail(url=guild.icon.url if guild.icon else "")
 
-    await ctx.send(embed=embed)
-
-#tickt command 
-@bot.slash_command(name="createticket", description="Creează un nou ticket")
-async def create_ticket(interaction: nextcord.Interaction):
-    view = TicketCategoryView(member=interaction.user, guild=interaction.guild)
-    await interaction.response.send_message("Selectează categoria ticketului:", view=view, ephemeral=True)
-
-#clear chat 
-@bot.slash_command(name="clearmsg", description="sterge mesaje")
-@commands.has_permissions(manage_messages=True)  # Asigură-te că doar utilizatorii cu permisiunea de a gestiona mesajele pot folosi această comandă
-async def clear(ctx, num: int):
-    if num < 1:
-        await ctx.send("Te rog să specifici un număr valid de mesaje pentru a fi șterse.")
-        return
-
-    deleted = await ctx.channel.purge(limit=num)
-    await ctx.send(f'Șterse {len(deleted)} mesaje.', delete_after=5)  # Mesajul de confirmare se va șterge automat după 5 secunde
 
 
 #welcome settings
@@ -476,55 +409,43 @@ async def on_member_join(member):
 
 
 
+#dugesti
 
-#slots
-@bot.slash_command(name="slots", description="Joacă la slot machine!")
-async def slots(interaction: nextcord.Interaction):
-    view = SlotMachineView()
-    await interaction.response.send_message("Apasă pe 'Spin' pentru a juca!", view=view)
+# Încărcarea comenzilor
+initial_extensions = ['commands.feedback', 'commands.dice','commands.pacanele','commands.clear','commands.tickets','commands.serverinfo','commands.setwords','commands.help','commands.cautaskin']
 
-#dice
-dice_images = {
-    1: "https://www.calculatorsoup.com/images/dice/die_1.gif",
-    2: "https://www.calculatorsoup.com/images/dice/die_2.gif",
-    3: "https://www.calculatorsoup.com/images/dice/die_3.gif",
-    4: "https://www.calculatorsoup.com/images/dice/die_4.gif",
-    5: "https://www.calculatorsoup.com/images/dice/die_5.gif",
-    6: "https://www.calculatorsoup.com/images/dice/die_6.gif"
-}
-
-@bot.slash_command(name="dice", description="Aruncă un zar")
-async def dice(interaction: nextcord.Interaction):
-    number = random.randint(1, 6)
-    image_url = dice_images[number]
-
-    # Creează și trimite embed-ul
-    embed = nextcord.Embed(title="Aruncarea zarului 🎲", description=f"Ai aruncat un {number}!")
-    embed.set_image(url=image_url)
-    await interaction.response.send_message(embed=embed)
-#feadback
-
-@bot.slash_command(name="feedback", description="Trimite un feedback sau o sugestie.")
-async def feedback(interaction: nextcord.Interaction, mesaj: str, rating: int = nextcord.SlashOption(description="Ratingul tău (1-5)", min_value=1, max_value=5)):
-    channel = bot.get_channel(983067390998872114)  # Înlocuiește cu ID-ul real al canalului
-
-    # Crearea unui embed pentru feedback
-    embed = nextcord.Embed(title="Feedback Nou", color=0x00ff00)
-    embed.add_field(name="Autor", value=interaction.user.mention, inline=False)
-    embed.add_field(name="Mesaj", value=mesaj, inline=False)
-    embed.add_field(name="Rating", value="⭐" * rating, inline=False)  # Adaugă stelele în funcție de rating
-    embed.set_footer(text=f"Trimis de {interaction.user.name}")
-    embed.timestamp = datetime.utcnow()
+if __name__ == '__main__':
+    for extension in initial_extensions:
+        bot.load_extension(extension)
 
 
-    # Trimiterea embed-ului către canal
-    await channel.send(embed=embed)
+@bot.slash_command(name="showcontent", description="Afișează un embed personalizat cu imagine, text și un link opțional.")
+async def show_content(
+    interaction: nextcord.Interaction,
+    image_url: str,
+    text: str,
+    link_url: str = ""  # Acest argument este opțional
+):
+    # Creează un embed cu textul furnizat
+    embed = nextcord.Embed(title="Announces", description=text, color=0x3498db)
+    
+    # Verifică și adaugă imaginea dacă URL-ul este valid
+    if image_url.startswith("http://") or image_url.startswith("https://"):
+        embed.set_image(url=image_url)
+    else:
+        await interaction.response.send_message("URL-ul imaginii nu este valid. Folosind doar textul.")
+        return
 
-    # Confirmarea pentru utilizator
-    confirm_embed = nextcord.Embed(title="Feedback Trimis",
-                                   description="Feedback-ul tău a fost trimis cu succes. Mulțumim pentru contribuție!",
-                                   color=0x00ff00)
-    await interaction.response.send_message(embed=confirm_embed, ephemeral=True)
+    # Creează o vizualizare pentru buton dacă este furnizat un link URL valid
+    if link_url.startswith("http://") or link_url.startswith("https://"):
+        button = Button(label="Mai multe informații", url=link_url, style=nextcord.ButtonStyle.url)
+        view = View()
+        view.add_item(button)
+        await interaction.response.send_message(embed=embed, view=view)
+    else:
+        # Dacă nu este furnizat un link URL valid, trimite doar embed-ul
+        await interaction.response.send_message(embed=embed)
+
 
 
 
